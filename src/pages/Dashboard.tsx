@@ -1,50 +1,11 @@
 import { motion } from 'framer-motion';
-import {
-  ShoppingBag,
-  DollarSign,
-  Clock,
-  TrendingUp,
-} from 'lucide-react';
+import { ShoppingBag, DollarSign, Clock, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { mockOrders } from '@/data/mockData';
+import { useAppStore } from '@/store/app-store';
+import { OrderStatus } from '@/types';
 
-const stats = [
-  {
-    title: 'Pedidos Hoje',
-    value: '24',
-    change: '+12%',
-    icon: ShoppingBag,
-    color: 'text-primary',
-    bg: 'bg-primary/10',
-  },
-  {
-    title: 'Faturamento',
-    value: 'R$ 1.284,50',
-    change: '+8%',
-    icon: DollarSign,
-    color: 'text-success',
-    bg: 'bg-success/10',
-  },
-  {
-    title: 'Tempo Médio',
-    value: '18 min',
-    change: '-5%',
-    icon: Clock,
-    color: 'text-secondary',
-    bg: 'bg-secondary/10',
-  },
-  {
-    title: 'Ticket Médio',
-    value: 'R$ 53,52',
-    change: '+3%',
-    icon: TrendingUp,
-    color: 'text-primary',
-    bg: 'bg-primary/10',
-  },
-];
-
-const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const statusMap: Record<OrderStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pendente', variant: 'secondary' },
   preparing: { label: 'Preparando', variant: 'default' },
   ready: { label: 'Pronto', variant: 'outline' },
@@ -52,8 +13,70 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'secondary
   cancelled: { label: 'Cancelado', variant: 'destructive' },
 };
 
+function formatCurrency(value: number) {
+  return value.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
 export default function Dashboard() {
-  const recentOrders = mockOrders.slice(0, 4);
+  const {
+    state: { orders },
+  } = useAppStore();
+
+  const activeOrders = orders.filter((order) => order.status !== 'cancelled');
+  const completedOrders = orders.filter((order) => order.status === 'delivered');
+  const totalRevenue = completedOrders.reduce((sum, order) => sum + order.total, 0);
+  const averageTicket = activeOrders.length > 0 ? activeOrders.reduce((sum, order) => sum + order.total, 0) / activeOrders.length : 0;
+  const averageMinutes = orders.length > 0
+    ? Math.round(
+        orders.reduce((sum, order) => {
+          const createdAt = new Date(order.createdAt).getTime();
+          const minutes = Math.max(1, Math.round((Date.now() - createdAt) / 60000));
+          return sum + minutes;
+        }, 0) / orders.length
+      )
+    : 0;
+
+  const stats = [
+    {
+      title: 'Pedidos Hoje',
+      value: String(orders.length),
+      change: `${orders.filter((order) => order.status === 'pending').length} pendentes`,
+      icon: ShoppingBag,
+      color: 'text-primary',
+      bg: 'bg-primary/10',
+    },
+    {
+      title: 'Faturamento',
+      value: formatCurrency(totalRevenue),
+      change: `${completedOrders.length} concluídos`,
+      icon: DollarSign,
+      color: 'text-success',
+      bg: 'bg-success/10',
+    },
+    {
+      title: 'Tempo Médio',
+      value: `${averageMinutes} min`,
+      change: 'baseado nos pedidos atuais',
+      icon: Clock,
+      color: 'text-secondary',
+      bg: 'bg-secondary/10',
+    },
+    {
+      title: 'Ticket Médio',
+      value: formatCurrency(averageTicket),
+      change: 'média dos pedidos ativos',
+      icon: TrendingUp,
+      color: 'text-primary',
+      bg: 'bg-primary/10',
+    },
+  ];
+
+  const recentOrders = [...orders]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
 
   return (
     <div className="space-y-8">
@@ -62,7 +85,6 @@ export default function Dashboard() {
         <p className="text-muted-foreground mt-1">Visão geral do seu negócio</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, i) => (
           <motion.div
@@ -77,7 +99,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground">{stat.title}</p>
                     <p className="font-heading text-2xl font-bold mt-1">{stat.value}</p>
-                    <span className="text-xs text-primary font-medium">{stat.change} vs ontem</span>
+                    <span className="text-xs text-primary font-medium">{stat.change}</span>
                   </div>
                   <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.bg}`}>
                     <stat.icon className={`h-6 w-6 ${stat.color}`} />
@@ -89,7 +111,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Recent Orders */}
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="font-heading">Pedidos Recentes</CardTitle>
@@ -110,14 +131,16 @@ export default function Dashboard() {
                     <div>
                       <p className="font-medium">{order.customerName}</p>
                       <p className="text-sm text-muted-foreground">
-                        {order.items.length} {order.items.length === 1 ? 'item' : 'itens'} • {new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {order.items.length} {order.items.length === 1 ? 'item' : 'itens'} •{' '}
+                        {new Date(order.createdAt).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-heading font-bold">
-                      R$ {order.total.toFixed(2)}
-                    </span>
+                    <span className="font-heading font-bold">{formatCurrency(order.total)}</span>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </div>
                 </div>

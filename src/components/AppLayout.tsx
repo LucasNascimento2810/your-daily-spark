@@ -8,11 +8,11 @@ import {
   MessageSquare,
   Settings,
   Menu,
-  X,
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/store/app-store';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -25,10 +25,12 @@ const navItems = [
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const {
+    state: { settings, whatsapp },
+  } = useAppStore();
 
   return (
     <div className="flex min-h-screen">
-      {/* Mobile overlay */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
@@ -41,7 +43,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 lg:static',
@@ -49,18 +50,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="flex h-full flex-col">
-          {/* Logo */}
           <div className="flex items-center gap-3 px-6 py-6 border-b border-sidebar-border">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
               <Zap className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-heading text-lg font-bold tracking-tight">ZapLanche</h1>
+              <h1 className="font-heading text-lg font-bold tracking-tight">{settings.storeName}</h1>
               <p className="text-xs text-sidebar-foreground/60">Automação WhatsApp</p>
             </div>
           </div>
 
-          {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-4">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -83,36 +82,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* Footer */}
           <div className="border-t border-sidebar-border px-4 py-4">
             <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent px-3 py-2">
-              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs text-sidebar-foreground/70">Evolution API conectada</span>
+              <div className={`h-2 w-2 rounded-full ${whatsapp.connected ? 'bg-success animate-pulse' : 'bg-warning'}`} />
+              <span className="text-xs text-sidebar-foreground/70">
+                {whatsapp.connected ? 'WhatsApp conectado' : 'WhatsApp não conectado'}
+              </span>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="flex flex-1 flex-col">
-        {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/80 backdrop-blur-xl px-4 lg:px-8">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex-1" />
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="h-2 w-2 rounded-full bg-success" />
-            Online
+            <div className={`h-2 w-2 rounded-full ${settings.openNowOverride ? 'bg-success' : 'bg-warning'}`} />
+            {settings.openNowOverride ? 'Online' : 'Fora do horário'}
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 p-4 lg:p-8">
           <motion.div
             key={location.pathname}

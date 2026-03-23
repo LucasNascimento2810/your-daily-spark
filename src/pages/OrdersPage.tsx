@@ -1,20 +1,19 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, MapPin, Phone, MessageSquare, ChevronDown } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { mockOrders } from '@/data/mockData';
-import { Order } from '@/types';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Order, OrderStatus } from '@/types';
 import { toast } from 'sonner';
+import { useAppStore } from '@/store/app-store';
 
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; next?: string; nextLabel?: string }> = {
+const statusConfig: Record<
+  OrderStatus,
+  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; next?: OrderStatus; nextLabel?: string }
+> = {
   pending: { label: 'Pendente', variant: 'secondary', next: 'preparing', nextLabel: 'Preparar' },
   preparing: { label: 'Preparando', variant: 'default', next: 'ready', nextLabel: 'Pronto' },
   ready: { label: 'Pronto', variant: 'outline', next: 'delivered', nextLabel: 'Entregar' },
@@ -22,32 +21,36 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   cancelled: { label: 'Cancelado', variant: 'destructive' },
 };
 
-function OrderCard({ order, onUpdateStatus }: { order: Order; onUpdateStatus: (id: string, status: Order['status']) => void }) {
+function OrderCard({ order, onUpdateStatus }: { order: Order; onUpdateStatus: (id: string, status: OrderStatus) => void }) {
   const [open, setOpen] = useState(false);
   const config = statusConfig[order.status];
-  const timeAgo = Math.round((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+  const timeAgo = Math.max(1, Math.round((Date.now() - new Date(order.createdAt).getTime()) / 60000));
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <Card className="glass-card hover:shadow-xl transition-all">
         <Collapsible open={open} onOpenChange={setOpen}>
           <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 font-heading font-bold text-primary">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 font-heading font-bold text-primary shrink-0">
                   {order.id.split('-')[1]}
                 </div>
-                <div>
-                  <p className="font-heading font-bold">{order.customerName}</p>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="h-3 w-3" /> {timeAgo} min atrás
+                <div className="min-w-0">
+                  <p className="font-heading font-bold truncate">{order.customerName}</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> {timeAgo} min atrás
+                    </span>
                     <span>•</span>
                     {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-heading font-bold text-lg">R$ {order.total.toFixed(2)}</span>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="font-heading font-bold text-lg">
+                  {order.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </span>
                 <Badge variant={config.variant}>{config.label}</Badge>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -58,21 +61,23 @@ function OrderCard({ order, onUpdateStatus }: { order: Order; onUpdateStatus: (i
             </div>
 
             <CollapsibleContent className="mt-4 space-y-4">
-              {/* Items */}
               <div className="rounded-xl bg-muted/50 p-4 space-y-2">
                 {order.items.map((item, i) => (
-                  <div key={i} className="flex justify-between text-sm">
-                    <span>{item.quantity}x {item.product.name}</span>
-                    <span className="font-medium">R$ {item.subtotal.toFixed(2)}</span>
+                  <div key={`${order.id}-${i}`} className="flex justify-between text-sm gap-3">
+                    <span>
+                      {item.quantity}x {item.product.name}
+                    </span>
+                    <span className="font-medium whitespace-nowrap">
+                      {item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
                   </div>
                 ))}
                 <div className="border-t border-border pt-2 flex justify-between font-heading font-bold">
                   <span>Total</span>
-                  <span>R$ {order.total.toFixed(2)}</span>
+                  <span>{order.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                 </div>
               </div>
 
-              {/* Info */}
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Phone className="h-4 w-4" />
@@ -92,21 +97,14 @@ function OrderCard({ order, onUpdateStatus }: { order: Order; onUpdateStatus: (i
                 )}
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2">
                 {config.next && (
-                  <Button
-                    onClick={() => onUpdateStatus(order.id, config.next as Order['status'])}
-                    className="flex-1"
-                  >
+                  <Button onClick={() => onUpdateStatus(order.id, config.next!)} className="flex-1">
                     {config.nextLabel}
                   </Button>
                 )}
                 {order.status !== 'cancelled' && order.status !== 'delivered' && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => onUpdateStatus(order.id, 'cancelled')}
-                  >
+                  <Button variant="destructive" onClick={() => onUpdateStatus(order.id, 'cancelled')}>
                     Cancelar
                   </Button>
                 )}
@@ -120,12 +118,16 @@ function OrderCard({ order, onUpdateStatus }: { order: Order; onUpdateStatus: (i
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>(mockOrders);
+  const {
+    state: { orders },
+    updateOrderStatus,
+  } = useAppStore();
   const [activeTab, setActiveTab] = useState('all');
 
-  const handleUpdateStatus = (id: string, status: Order['status']) => {
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-    const labels: Record<string, string> = {
+  const handleUpdateStatus = (id: string, status: OrderStatus) => {
+    updateOrderStatus(id, status);
+    const labels: Record<OrderStatus, string> = {
+      pending: 'Pedido marcado como pendente.',
       preparing: 'Pedido em preparo!',
       ready: 'Pedido pronto!',
       delivered: 'Pedido entregue!',
@@ -134,12 +136,11 @@ export default function OrdersPage() {
     toast.success(labels[status]);
   };
 
-  const filteredOrders = activeTab === 'all'
-    ? orders
-    : orders.filter((o) => o.status === activeTab);
+  const sortedOrders = [...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filteredOrders = activeTab === 'all' ? sortedOrders : sortedOrders.filter((order) => order.status === activeTab);
 
-  const pendingCount = orders.filter((o) => o.status === 'pending').length;
-  const preparingCount = orders.filter((o) => o.status === 'preparing').length;
+  const pendingCount = orders.filter((order) => order.status === 'pending').length;
+  const preparingCount = orders.filter((order) => order.status === 'preparing').length;
 
   return (
     <div className="space-y-6">

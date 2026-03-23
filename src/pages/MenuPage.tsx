@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Pencil, Trash2, Search, Package } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,55 +22,98 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockProducts, mockCategories } from '@/data/mockData';
-import { Product } from '@/types';
+import { Product, ProductInput } from '@/types';
 import { toast } from 'sonner';
+import { useAppStore } from '@/store/app-store';
+
+const emptyProductForm: ProductInput = {
+  name: '',
+  description: '',
+  price: 0,
+  category: '',
+  available: true,
+};
 
 export default function MenuPage() {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const {
+    state: { products, categories },
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    toggleProductAvailability,
+  } = useAppStore();
+
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+  const [productForm, setProductForm] = useState<ProductInput>({
+    ...emptyProductForm,
+    category: categories[0]?.id ?? '',
   });
 
+  useEffect(() => {
+    if (!dialogOpen) {
+      setEditingProduct(null);
+      setProductForm({
+        ...emptyProductForm,
+        category: categories[0]?.id ?? '',
+      });
+      return;
+    }
+
+    if (editingProduct) {
+      setProductForm({
+        name: editingProduct.name,
+        description: editingProduct.description,
+        price: editingProduct.price,
+        category: editingProduct.category,
+        available: editingProduct.available,
+      });
+    }
+  }, [categories, dialogOpen, editingProduct]);
+
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((product) => {
+        const term = search.toLowerCase();
+        const categoryName = categories.find((category) => category.id === product.category)?.name ?? '';
+        const matchesSearch =
+          product.name.toLowerCase().includes(term) ||
+          product.description.toLowerCase().includes(term) ||
+          categoryName.toLowerCase().includes(term);
+        const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      }),
+    [categories, products, search, selectedCategory]
+  );
+
   const handleToggleAvailability = (id: string) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, available: !p.available } : p))
-    );
+    toggleProductAvailability(id);
     toast.success('Disponibilidade atualizada!');
   };
 
   const handleDelete = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    deleteProduct(id);
     toast.success('Produto removido!');
   };
 
   const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const product: Product = {
-      id: editingProduct?.id || String(Date.now()),
-      name: formData.get('name') as string,
-      description: formData.get('description') as string,
-      price: parseFloat(formData.get('price') as string),
-      category: formData.get('category') as string,
-      available: true,
-    };
+
+    if (!productForm.name || !productForm.description || !productForm.category || productForm.price <= 0) {
+      toast.error('Preencha todos os campos corretamente');
+      return;
+    }
 
     if (editingProduct) {
-      setProducts((prev) => prev.map((p) => (p.id === editingProduct.id ? product : p)));
+      updateProduct(editingProduct.id, productForm);
       toast.success('Produto atualizado!');
     } else {
-      setProducts((prev) => [...prev, product]);
+      addProduct(productForm);
       toast.success('Produto adicionado!');
     }
-    setEditingProduct(null);
+
     setDialogOpen(false);
   };
 
@@ -81,7 +124,7 @@ export default function MenuPage() {
           <h1 className="font-heading text-3xl font-bold tracking-tight">Cardápio</h1>
           <p className="text-muted-foreground mt-1">Gerencie seus produtos e categorias</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingProduct(null); }}>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="h-4 w-4" /> Novo Produto
@@ -96,27 +139,53 @@ export default function MenuPage() {
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome</Label>
-                <Input id="name" name="name" defaultValue={editingProduct?.name} required />
+                <Input
+                  id="name"
+                  value={productForm.name}
+                  onChange={(e) => setProductForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Descrição</Label>
-                <Textarea id="description" name="description" defaultValue={editingProduct?.description} required />
+                <Textarea
+                  id="description"
+                  value={productForm.description}
+                  onChange={(e) => setProductForm((prev) => ({ ...prev, description: e.target.value }))}
+                  required
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="price">Preço (R$)</Label>
-                  <Input id="price" name="price" type="number" step="0.01" defaultValue={editingProduct?.price} required />
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={productForm.price || ''}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({
+                        ...prev,
+                        price: Number.parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Categoria</Label>
-                  <Select name="category" defaultValue={editingProduct?.category || mockCategories[0].id}>
+                  <Select
+                    value={productForm.category}
+                    onValueChange={(value) => setProductForm((prev) => ({ ...prev, category: value }))}
+                  >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockCategories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.icon} {c.name}
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.icon} {category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -131,7 +200,6 @@ export default function MenuPage() {
         </Dialog>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -150,24 +218,23 @@ export default function MenuPage() {
           >
             Todos
           </Button>
-          {mockCategories.map((c) => (
+          {categories.map((category) => (
             <Button
-              key={c.id}
-              variant={selectedCategory === c.id ? 'default' : 'outline'}
+              key={category.id}
+              variant={selectedCategory === category.id ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setSelectedCategory(c.id)}
+              onClick={() => setSelectedCategory(category.id)}
             >
-              {c.icon} {c.name}
+              {category.icon} {category.name}
             </Button>
           ))}
         </div>
       </div>
 
-      {/* Products Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence mode="popLayout">
           {filteredProducts.map((product) => {
-            const category = mockCategories.find((c) => c.id === product.category);
+            const category = categories.find((categoryItem) => categoryItem.id === product.category);
             return (
               <motion.div
                 key={product.id}
@@ -182,7 +249,9 @@ export default function MenuPage() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">{category?.icon}</span>
-                        <Badge variant="outline" className="text-xs">{category?.name}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {category?.name}
+                        </Badge>
                       </div>
                       <Switch
                         checked={product.available}
@@ -193,14 +262,17 @@ export default function MenuPage() {
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{product.description}</p>
                     <div className="flex items-center justify-between mt-4">
                       <span className="font-heading text-xl font-bold text-primary">
-                        R$ {product.price.toFixed(2)}
+                        {product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </span>
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => { setEditingProduct(product); setDialogOpen(true); }}
+                          onClick={() => {
+                            setEditingProduct(product);
+                            setDialogOpen(true);
+                          }}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>

@@ -1,60 +1,59 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-  MessageSquare,
-  Wifi,
-  WifiOff,
-  ExternalLink,
-  Copy,
-  CheckCircle2,
-  AlertCircle,
-  Bot,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AlertCircle, Bot, Wifi, WifiOff } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { WhatsAppConfig } from '@/types';
+import { useAppStore } from '@/store/app-store';
+import { ChatbotConfig, WhatsAppConfig, WhatsAppProvider } from '@/types';
 
 export default function WhatsAppPage() {
-  const [config, setConfig] = useState<WhatsAppConfig>({
-    provider: 'evolution',
-    apiUrl: '',
-    apiKey: '',
-    instanceName: '',
-    connected: false,
-  });
+  const {
+    state: { whatsapp, chatbot },
+    saveWhatsAppConfig,
+    saveChatbotConfig,
+  } = useAppStore();
 
-  const [greeting, setGreeting] = useState(
-    'Olá! 👋 Bem-vindo à *ZapLanche*!\n\nEscolha uma opção:\n1️⃣ Ver cardápio\n2️⃣ Fazer pedido\n3️⃣ Acompanhar pedido\n4️⃣ Falar com atendente'
-  );
+  const [config, setConfig] = useState<WhatsAppConfig>(whatsapp);
+  const [chatbotForm, setChatbotForm] = useState<ChatbotConfig>(chatbot);
 
-  const [autoReply, setAutoReply] = useState(true);
+  useEffect(() => setConfig(whatsapp), [whatsapp]);
+  useEffect(() => setChatbotForm(chatbot), [chatbot]);
 
   const handleConnect = () => {
     if (!config.apiUrl || !config.apiKey || !config.instanceName) {
       toast.error('Preencha todos os campos de configuração');
       return;
     }
-    setConfig((prev) => ({ ...prev, connected: true }));
+
+    const nextConfig = { ...config, connected: true };
+    setConfig(nextConfig);
+    saveWhatsAppConfig(nextConfig);
     toast.success('Conexão estabelecida com sucesso!');
   };
 
   const handleDisconnect = () => {
-    setConfig((prev) => ({ ...prev, connected: false }));
+    const nextConfig = { ...config, connected: false };
+    setConfig(nextConfig);
+    saveWhatsAppConfig(nextConfig);
     toast.info('Desconectado');
+  };
+
+  const saveConnection = () => {
+    saveWhatsAppConfig(config);
+    toast.success('Configurações da conexão salvas!');
+  };
+
+  const saveChatbot = () => {
+    saveChatbotConfig(chatbotForm);
+    toast.success('Configurações do chatbot salvas!');
   };
 
   return (
@@ -71,9 +70,7 @@ export default function WhatsAppPage() {
           <TabsTrigger value="messages">Mensagens</TabsTrigger>
         </TabsList>
 
-        {/* Connection Tab */}
         <TabsContent value="connection" className="mt-4 space-y-4">
-          {/* Status Card */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <Card className="glass-card">
               <CardContent className="p-6">
@@ -83,9 +80,7 @@ export default function WhatsAppPage() {
                       {config.connected ? <Wifi className="h-7 w-7 text-success" /> : <WifiOff className="h-7 w-7 text-muted-foreground" />}
                     </div>
                     <div>
-                      <h3 className="font-heading font-bold text-lg">
-                        {config.connected ? 'Conectado' : 'Desconectado'}
-                      </h3>
+                      <h3 className="font-heading font-bold text-lg">{config.connected ? 'Conectado' : 'Desconectado'}</h3>
                       <p className="text-sm text-muted-foreground">
                         {config.connected
                           ? `Instância: ${config.instanceName} • ${config.provider === 'evolution' ? 'Evolution API' : 'Z-API'}`
@@ -101,7 +96,6 @@ export default function WhatsAppPage() {
             </Card>
           </motion.div>
 
-          {/* Config Card */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <Card className="glass-card">
               <CardHeader>
@@ -113,7 +107,7 @@ export default function WhatsAppPage() {
                   <Label>Provedor</Label>
                   <Select
                     value={config.provider}
-                    onValueChange={(v: 'evolution' | 'zapi') => setConfig((prev) => ({ ...prev, provider: v }))}
+                    onValueChange={(value: WhatsAppProvider) => setConfig((prev) => ({ ...prev, provider: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -156,16 +150,19 @@ export default function WhatsAppPage() {
                   />
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                   {!config.connected ? (
-                    <Button onClick={handleConnect} className="flex-1 gap-2">
+                    <Button onClick={handleConnect} className="flex-1 gap-2 min-w-[180px]">
                       <Wifi className="h-4 w-4" /> Conectar
                     </Button>
                   ) : (
-                    <Button variant="destructive" onClick={handleDisconnect} className="flex-1 gap-2">
+                    <Button variant="destructive" onClick={handleDisconnect} className="flex-1 gap-2 min-w-[180px]">
                       <WifiOff className="h-4 w-4" /> Desconectar
                     </Button>
                   )}
+                  <Button variant="outline" onClick={saveConnection} className="min-w-[180px]">
+                    Salvar Configuração
+                  </Button>
                 </div>
 
                 <div className="rounded-xl bg-muted/50 p-4 flex items-start gap-3">
@@ -184,7 +181,6 @@ export default function WhatsAppPage() {
           </motion.div>
         </TabsContent>
 
-        {/* Chatbot Tab */}
         <TabsContent value="chatbot" className="mt-4 space-y-4">
           <Card className="glass-card">
             <CardHeader>
@@ -199,28 +195,28 @@ export default function WhatsAppPage() {
                   <p className="font-medium">Resposta automática</p>
                   <p className="text-sm text-muted-foreground">Ativar chatbot para responder automaticamente</p>
                 </div>
-                <Switch checked={autoReply} onCheckedChange={setAutoReply} />
+                <Switch
+                  checked={chatbotForm.autoReply}
+                  onCheckedChange={(checked) => setChatbotForm((prev) => ({ ...prev, autoReply: checked }))}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Mensagem de Boas-Vindas</Label>
                 <Textarea
-                  value={greeting}
-                  onChange={(e) => setGreeting(e.target.value)}
+                  value={chatbotForm.greeting}
+                  onChange={(e) => setChatbotForm((prev) => ({ ...prev, greeting: e.target.value }))}
                   rows={6}
                   className="font-mono text-sm"
                 />
                 <p className="text-xs text-muted-foreground">Use *texto* para negrito e _texto_ para itálico no WhatsApp</p>
               </div>
 
-              <Button onClick={() => toast.success('Configurações do chatbot salvas!')}>
-                Salvar Configurações
-              </Button>
+              <Button onClick={saveChatbot}>Salvar Configurações</Button>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Messages Tab */}
         <TabsContent value="messages" className="mt-4 space-y-4">
           <Card className="glass-card">
             <CardHeader>
@@ -228,20 +224,52 @@ export default function WhatsAppPage() {
               <CardDescription>Configure as mensagens para cada etapa do pedido</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                { label: 'Pedido Recebido', defaultMsg: '✅ Pedido #{id} recebido!\n\nItens:\n{items}\n\nTotal: R$ {total}\n\nPrevisão: ~20 min' },
-                { label: 'Pedido em Preparo', defaultMsg: '👨‍🍳 Seu pedido #{id} está sendo preparado!' },
-                { label: 'Pedido Pronto', defaultMsg: '🎉 Pedido #{id} pronto!\n\n{delivery_msg}' },
-              ].map((msg) => (
-                <div key={msg.label} className="space-y-2">
-                  <Label>{msg.label}</Label>
-                  <Textarea defaultValue={msg.defaultMsg} rows={3} className="font-mono text-sm" />
-                </div>
-              ))}
+              <div className="space-y-2">
+                <Label>Pedido Recebido</Label>
+                <Textarea
+                  value={chatbotForm.templates.orderReceived}
+                  onChange={(e) =>
+                    setChatbotForm((prev) => ({
+                      ...prev,
+                      templates: { ...prev.templates, orderReceived: e.target.value },
+                    }))
+                  }
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Pedido em Preparo</Label>
+                <Textarea
+                  value={chatbotForm.templates.orderPreparing}
+                  onChange={(e) =>
+                    setChatbotForm((prev) => ({
+                      ...prev,
+                      templates: { ...prev.templates, orderPreparing: e.target.value },
+                    }))
+                  }
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Pedido Pronto</Label>
+                <Textarea
+                  value={chatbotForm.templates.orderReady}
+                  onChange={(e) =>
+                    setChatbotForm((prev) => ({
+                      ...prev,
+                      templates: { ...prev.templates, orderReady: e.target.value },
+                    }))
+                  }
+                  rows={3}
+                  className="font-mono text-sm"
+                />
+              </div>
               <p className="text-xs text-muted-foreground">
                 Variáveis: {'{id}'} = nº pedido, {'{items}'} = itens, {'{total}'} = total, {'{name}'} = nome do cliente
               </p>
-              <Button onClick={() => toast.success('Mensagens salvas!')}>Salvar Mensagens</Button>
+              <Button onClick={saveChatbot}>Salvar Mensagens</Button>
             </CardContent>
           </Card>
         </TabsContent>
